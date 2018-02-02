@@ -1,0 +1,5 @@
+# For everyone
+unidecode
+
+# For dev
+pytest

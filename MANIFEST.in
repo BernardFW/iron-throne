@@ -1,0 +1,4 @@
+include README.*
+include LICENSE.*
+include requirements.txt
+include requirements_as_lib.txt
