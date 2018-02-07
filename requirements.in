@@ -1,5 +1,7 @@
 # For everyone
 unidecode
+simanneal
 
 # For dev
 pytest
+isort
