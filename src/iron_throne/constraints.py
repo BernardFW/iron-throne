@@ -1,4 +1,8 @@
+from collections import (
+    defaultdict,
+)
 from typing import (
+    Dict,
     List,
     Optional,
     Set,
@@ -9,9 +13,35 @@ from .claim import (
     Claim,
     Proof,
 )
+from .utils import (
+    is_contiguous,
+)
+from .words import (
+    Word,
+)
 
 
 class Constraint(object):
+    def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
+        """
+        Given those words, compute the lowest and highest bound of energy.
+        Anything under the lowest can be considered as good while anything
+        above the highest is completely crazy.
+        """
+
+        raise NotImplementedError
+
+    def energy(self, proofs: List[Optional[Proof]]) -> float:
+        """
+        The further we are from a good solution the higher the energy level
+        must be.
+
+        This energy level must be consistent with the results returned by
+        `score_bounds()`.
+        """
+
+        raise NotImplementedError
+
     def score(self, proofs: List[Optional[Proof]]) -> float:
         """
         Given a list of proofs, evaluates from 0 to 1 how much this constraint
@@ -23,22 +53,26 @@ class Constraint(object):
 
         raise NotImplementedError
 
-    def score_hint(self, proofs: List[Optional[Proof]]) -> float:
-        """
-        If this constraint is binary (aka if any error triggers a 0.0 score),
-        then we need to help the guessing algorithm. This scoring function
-        will indicate how "hot" the answer is. It's a number as big as you
-        want, just try to keep it balanced in comparison to other constraints
-        and to make sure that a bigger number means a better solution.
-        """
-
-        raise NotImplementedError
-
 
 class NoTwice(Constraint):
     """
     Makes sure that the same entity does not appear twice
     """
+
+    def energy_bounds(self, words: List[Word]):
+        total = len(words)
+        max_e = max(0, total - 1)
+        min_e = 0
+
+        return min_e, max_e
+
+    def energy(self, proofs: List[Optional[Proof]]):
+        n_entities, n_unique = self._score(proofs)
+        return n_entities - n_unique
+
+    def score(self, proofs: List[Optional[Proof]]):
+        n_entities, n_unique = self._score(proofs)
+        return 1.0 if n_entities == n_unique else 0.0
 
     def _score(self, proofs: List[Optional[Proof]]) -> Tuple[float, float]:
         """
@@ -47,12 +81,14 @@ class NoTwice(Constraint):
         found.
         """
 
-        if not proofs:
+        active_proofs = [p for p in proofs if p is not None]
+
+        if not active_proofs:
             return 0, 0
 
-        entities = [proofs[0].claim.entity]
+        entities = [active_proofs[0].claim.entity]
 
-        for proof in proofs[1:]:
+        for proof in active_proofs[1:]:
             entity = proof.claim.entity
 
             if entity != entities[-1]:
@@ -62,67 +98,52 @@ class NoTwice(Constraint):
 
         return len(entities), len(unique)
 
-    def score(self, proofs: List[Optional[Proof]]):
-        e, u = self._score(proofs)
-        return 1.0 if e == u else 0.0
-
-    def score_hint(self, proofs: List[Optional[Proof]]):
-        e, u = self._score(proofs)
-        return e-u
-
 
 class FullMatches(Constraint):
     """
     All claims should have their parts in order and have all their parts around
     """
 
-    def _score(self, proofs: List[Optional[Proof]]) -> Tuple[float, float]:
-        """
-        Make sure that all claims are complete and in order. Returns (in that
-        order) the number of checks passed and the number of checks made.
-        """
+    WRONG_CLAIM_WEIGHT = 10
 
-        could = 1
-        did = 0
+    def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
+        return 0, len(words) * self.WRONG_CLAIM_WEIGHT
 
-        if not proofs:
-            return .0, .0
+    def check_claims(self, proofs: List[Optional[Proof]]) -> Dict[Claim, bool]:
+        claims = defaultdict(lambda: [])
 
-        if proofs[0].order == 0:
-            did += 1
+        for pos, proof in enumerate(proofs):
+            if proof is not None:
+                claims[proof.claim].append((pos, proof))
 
-        for i in range(1, len(proofs)):
-            last, proof = proofs[i - 1], proofs[i]
-            could += 1
+        return {
+            claim: self.is_consistent(claim, proofs)
+            for claim, proofs in claims.items()
+        }
 
-            if proof.claim.id == last.claim.id:
-                if proof.order == last.order + 1:
-                    did += 1
-            else:
-                if proof.order == 0:
-                    did += 1
+    def energy(self, proofs: List[Optional[Proof]]) -> float:
+        claims = self.check_claims(proofs)
+        e = .0
 
-                could += 1
+        for is_good in claims.values():
+            if not is_good:
+                e += self.WRONG_CLAIM_WEIGHT
 
-                if last.order + 1 == last.claim.length:
-                    did += 1
-
-        if len(proofs) > 1:
-            could += 1
-            last = proofs[-1]
-
-            if last.order + 1 == last.claim.length:
-                did += 1
-
-        return float(did), float(could)
+        return e
 
     def score(self, proofs: List[Optional[Proof]]) -> float:
-        d, c = self._score(proofs)
-        return 1. if d == c else .0
+        return 1. if self.energy(proofs) == .0 else .0
 
-    def score_hint(self, proofs: List[Optional[Proof]]) -> float:
-        d, c = self._score(proofs)
-        return d / c
+    def is_consistent(self, claim: Claim, proofs: List[Tuple[int, Proof]]):
+        try:
+            assert proofs[0][1].order == 0
+            assert proofs[-1][1].order == claim.length - 1
+            assert is_contiguous([p for p, _ in proofs])
+            assert is_contiguous([p.order for _, p in proofs])
+        except AssertionError:
+            return False
+        else:
+            return True
 
 
 class AllowedSets(Constraint):
@@ -176,33 +197,49 @@ class AllowedSets(Constraint):
 
 
 class LargestClaim(Constraint):
-    def score(self, proofs: List[Optional[Proof]]):
+    CLAIM_WEIGHT = 1.
+
+    def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
+        return len(words) * self.CLAIM_WEIGHT, len(words) * self.CLAIM_WEIGHT
+
+    def score(self, proofs: List[Optional[Proof]]) -> float:
         return 1.0
 
-    def score_hint(self, proofs: List[Optional[Proof]]):
-        score = 0
+    def energy(self, proofs: List[Optional[Proof]]) -> float:
+        score = .0
 
         for proof in proofs:
-            # noinspection PyNoneFunctionAssignment
+            if proof is None:
+                score += self.CLAIM_WEIGHT
+                break
+
+            d: Optional[Claim] = None
             longest: Optional[Claim] = max(
                 proof.word.proofs,
                 key=lambda p: p.claim.length,
-                default=None,
+                default=d,
             )
 
             if longest is not None:
-                score -= 1
-
                 if proof.claim.length >= longest.length:
-                    score += 2
+                    score += self.CLAIM_WEIGHT
 
         return score
 
 
 class ClaimScores(Constraint):
-    def score(self, proofs: List[Optional[Proof]]):
-        total = sum(p.claim.score for p in proofs)
-        return float(total) / float(len(proofs))
+    WORD_WEIGHT = 5.
 
-    def score_hint(self, proofs: List[Optional[Proof]]):
-        return sum(p.claim.score for p in proofs)
+    def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
+        return 0, len(words) * self.WORD_WEIGHT
+
+    def energy(self, proofs: List[Optional[Proof]]) -> float:
+        return sum(
+            (1 - p.claim.score) * self.WORD_WEIGHT
+            for p in proofs
+            if p is not None
+        )
+
+    def score(self, proofs: List[Optional[Proof]]):
+        total = sum(p.claim.score for p in proofs if p is not None)
+        return float(total) / float(len(proofs))

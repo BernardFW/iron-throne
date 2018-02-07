@@ -32,12 +32,33 @@ random = SystemRandom()
 
 
 class IronThroneSolver(Annealer):
+    MAX_ATTENUATION = 0.9
+
     def __init__(self, words: List[Word], constraints: List[Constraint]):
-        super().__init__()
+        super().__init__([None] * len(words))
 
         self.words = words
         self.constraints = constraints
-        self.state: List[Optional[int]] = [None] * len(words)
+
+    def configure(self):
+        """
+        Guess the configuration for the annealing. Please note that this is
+        completely speculative... Moreover, the "steps" value calculation is
+        really based on nothing but intuition.
+        """
+
+        t_mins = []
+        t_maxs = []
+
+        for constraint in self.constraints:
+            t_min, t_max = constraint.energy_bounds(self.words)
+            t_mins.append(t_min)
+            t_maxs.append(t_max)
+
+        self.Tmin = float(sum(t_mins))
+        self.Tmax = sum(t_maxs) * self.MAX_ATTENUATION
+        self.updates = 0
+        self.steps = (len(self.words) ** 2) * 100
 
     def move(self):
         word_idx = random.randint(0, len(self.words) - 1)
@@ -61,7 +82,7 @@ class IronThroneSolver(Annealer):
         score = .0
 
         for constraint in self.constraints:
-            score += constraint.score_hint(proofs)
+            score += constraint.energy(proofs)
 
         return score
 
@@ -81,10 +102,11 @@ class IronThrone(object):
             pretender.claim(words)
 
         solver = IronThroneSolver(words, self.constraints)
+        solver.configure()
         solver.anneal()
 
         proofs = list(solver.proofs())
         score = min((c.score(proofs) for c in self.constraints), default=.0)
-        claims: Set[Claim] = set(p.claim for p in proofs if proofs is not None)
+        claims: Set[Claim] = set(p.claim for p in proofs if p is not None)
 
         return list(claims), score
