@@ -4,6 +4,7 @@
 *.swp
 MANIFEST
 /dist
+/build
 *.log
 .cache
 *.egg-info
