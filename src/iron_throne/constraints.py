@@ -54,51 +54,6 @@ class Constraint(object):
         raise NotImplementedError
 
 
-class NoTwice(Constraint):
-    """
-    Makes sure that the same entity does not appear twice
-    """
-
-    def energy_bounds(self, words: List[Word]):
-        total = len(words)
-        max_e = max(0, total - 1)
-        min_e = 0
-
-        return min_e, max_e
-
-    def energy(self, proofs: List[Optional[Proof]]):
-        n_entities, n_unique = self._score(proofs)
-        return n_entities - n_unique
-
-    def score(self, proofs: List[Optional[Proof]]):
-        n_entities, n_unique = self._score(proofs)
-        return 1.0 if n_entities == n_unique else 0.0
-
-    def _score(self, proofs: List[Optional[Proof]]) -> Tuple[float, float]:
-        """
-        Internal scoring function. The first returned item is the number of
-        entities found and the second one is the number of unique entities
-        found.
-        """
-
-        active_proofs = [p for p in proofs if p is not None]
-
-        if not active_proofs:
-            return 0, 0
-
-        entities = [active_proofs[0].claim.entity]
-
-        for proof in active_proofs[1:]:
-            entity = proof.claim.entity
-
-            if entity != entities[-1]:
-                entities.append(entity)
-
-        unique = set(entities)
-
-        return len(entities), len(unique)
-
-
 class FullMatches(Constraint):
     """
     All claims should have their parts in order and have all their parts around
@@ -211,17 +166,17 @@ class LargestClaim(Constraint):
         for proof in proofs:
             if proof is None:
                 score += self.CLAIM_WEIGHT
-                break
+                continue
 
             d: Optional[Claim] = None
-            longest: Optional[Claim] = max(
+            longest: Optional[Proof] = max(
                 proof.word.proofs,
                 key=lambda p: p.claim.length,
                 default=d,
             )
 
             if longest is not None:
-                if proof.claim.length >= longest.length:
+                if proof.claim.length < longest.claim.length:
                     score += self.CLAIM_WEIGHT
 
         return score
@@ -231,15 +186,15 @@ class ClaimScores(Constraint):
     WORD_WEIGHT = 5.
 
     def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
-        return 0, len(words) * self.WORD_WEIGHT
+        return len(words) * self.WORD_WEIGHT, len(words) * self.WORD_WEIGHT
 
     def energy(self, proofs: List[Optional[Proof]]) -> float:
         return sum(
-            (1 - p.claim.score) * self.WORD_WEIGHT
+            (1 - (p.claim.score if p is not None else .0)) * self.WORD_WEIGHT
             for p in proofs
-            if p is not None
         )
 
     def score(self, proofs: List[Optional[Proof]]):
-        total = sum(p.claim.score for p in proofs if p is not None)
-        return float(total) / float(len(proofs))
+        scores = [p.claim.score for p in proofs if p is not None]
+        total = sum(scores)
+        return float(total) / float(len(scores))

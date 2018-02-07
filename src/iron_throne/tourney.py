@@ -61,14 +61,23 @@ class IronThroneSolver(Annealer):
         self.steps = (len(self.words) ** 2) * 100
 
     def move(self):
-        word_idx = random.randint(0, len(self.words) - 1)
-        word = self.words[word_idx]
-        proof_idx = random.randint(0, len(word.proofs)) - 1
+        valid_word_idx = [i for i, w in enumerate(self.words) if w.proofs]
 
-        if proof_idx < 0:
-            self.state[word_idx] = None
-        else:
-            self.state[word_idx] = proof_idx
+        if not valid_word_idx:
+            return
+
+        word_idx = random.choice(valid_word_idx)
+
+        valid_proof_idx = [
+            x for x
+            in [None] + list(range(0, len(self.words[word_idx].proofs)))
+            if self.state[word_idx] != x
+        ]
+
+        if not valid_proof_idx:
+            return
+
+        self.state[word_idx] = random.choice(valid_proof_idx)
 
     def proofs(self) -> List[Optional[Proof]]:
         for word_idx, proof_idx in enumerate(self.state):
