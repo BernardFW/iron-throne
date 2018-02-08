@@ -88,7 +88,7 @@ TrigramIndex = Dict[
 
 
 class ExpressionPretender(Pretender):
-    MIN_SCORE = 0.3
+    MIN_SCORE = .6
 
     def __init__(self, expressions: List[Expression], seq: int = 0):
         self.expressions = expressions

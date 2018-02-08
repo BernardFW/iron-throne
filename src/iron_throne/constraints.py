@@ -183,7 +183,7 @@ class LargestClaim(Constraint):
 
 
 class ClaimScores(Constraint):
-    WORD_WEIGHT = 5.
+    WORD_WEIGHT = 50.
 
     def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
         return len(words) * self.WORD_WEIGHT, len(words) * self.WORD_WEIGHT
@@ -196,5 +196,9 @@ class ClaimScores(Constraint):
 
     def score(self, proofs: List[Optional[Proof]]):
         scores = [p.claim.score for p in proofs if p is not None]
+
+        if not scores:
+            return .0
+
         total = sum(scores)
         return float(total) / float(len(scores))
