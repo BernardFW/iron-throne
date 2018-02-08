@@ -7,7 +7,7 @@ from typing import (
     Optional,
     Set,
     Tuple,
-)
+    NamedTuple, Text)
 
 from .claim import (
     Claim,
@@ -161,8 +161,16 @@ class FullMatches(Constraint):
             return True
 
 
+class EntitySet(NamedTuple):
+    penalty: int
+    needs_one_of: Set[Text]
+    also_allowed: Set[Text]
+
+
 class AllowedSets(Constraint):
-    def __init__(self, sets: List[Tuple[Set, Set]]):
+    EXTRA_ENTITY_WEIGHT = 10.
+
+    def __init__(self, sets: List[EntitySet]):
         """
         A list, by order of priority, of sets of entities that are allowed to
         be together.
@@ -170,9 +178,12 @@ class AllowedSets(Constraint):
         The list is a list of tuples, like this:
 
         >>> AllowedSets([
-        >>>     ({'activity', 'interest'}, {'city', 'age', 'gratis'}),
-        >>>     ({'sanitary'}, set()),
+        >>>     EntitySet(50, {'activity', 'interest'}, {'city', 'age'}),
+        >>>     EntitySet(0, {'sanitary'}, set()),
         >>> ])
+
+        The first int in the tuple is the penalty for choosing this set. The
+        highest the least priority this set will get.
 
         The first set of the tuple is the mandatory entities. At least one of
         these has to be present.
@@ -181,34 +192,41 @@ class AllowedSets(Constraint):
         found.
         """
 
-        self.sets = sets
+        self.sets: List[EntitySet] = sets
 
-    def score_hint(self, proofs: List[Optional[Proof]]):
-        """
-        Basically, add a penalty if some things are out of place (if two sets
-        are mixed up). If things are ok, just return 0.
-        """
+    def energy_bounds(self, words: List[Word]):
+        max_penalty = min(self.sets, key=lambda s: s.penalty).penalty
+        return max_penalty, max_penalty + len(words) * self.EXTRA_ENTITY_WEIGHT
 
-        score = 100 - len(self.sets)
-        present = set(p.claim.entity for p in proofs)
-        all_mandatory = set()
+    def extract_entities(self, proofs: List[Optional[Proof]]) -> Set[Text]:
+        entities = set()
 
-        for priority, (mandatory, extra) in enumerate(reversed(self.sets)):
-            if present & mandatory:
-                score -= 100
-                score += priority
+        for proof in (p for p in proofs if p is not None):
+            entities.add(proof.claim.entity)
 
-            all_mandatory += mandatory
+        return entities
 
-            score -= len(present - mandatory - extra) * 10
+    def choose_set(self, entities: Set[Text]) -> Optional[EntitySet]:
+        def list_options():
+            for es in self.sets:
+                if es.needs_one_of & entities:
+                    yield es
 
-        if present - all_mandatory == present:
-            score -= 1000
+        # noinspection PyTypeChecker
+        return min(list_options(), key=lambda es: es.penalty, default=None)
 
-        return score
+    def energy(self, proofs: List[Optional[Proof]]):
+        allowed = set()
+        present = self.extract_entities(proofs)
+        current_set = self.choose_set(present)
+
+        if current_set:
+            allowed = current_set.needs_one_of | current_set.also_allowed
+
+        return len(present - allowed) * self.EXTRA_ENTITY_WEIGHT
 
     def score(self, proofs: List[Optional[Proof]]):
-        return 1. if self.score_hint(proofs) >= 0 else .0
+        return 1. if self.energy(proofs) == 0. else .0
 
 
 class LargestClaim(Constraint):

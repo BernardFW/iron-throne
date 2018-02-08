@@ -12,7 +12,7 @@ from iron_throne.constraints import (
     ClaimScores,
     FullMatches,
     LargestClaim,
-)
+    AllowedSets, EntitySet)
 from iron_throne.pretenders import (
     Expression,
     ExpressionPretender,
@@ -146,6 +146,25 @@ def test_full_matches():
     assert solver.energy() == 10.
 
     solver.state = [None, None, potato_idx, None]
+    assert solver.energy() == 10.
+
+
+def test_allowed_sets():
+    words = list(tokenize('salad turtle'))
+    ExpressionPretender(expressions).claim(words)
+
+    solver = IronThroneSolver(words, [AllowedSets([
+        EntitySet(0, {'food'}, set()),
+    ])])
+    solver.configure()
+
+    solver.state = [None, None]
+    assert solver.energy() == 0.
+
+    solver.state = [0, None]
+    assert solver.energy() == 0.
+
+    solver.state = [0, 0]
     assert solver.energy() == 10.
 
 
