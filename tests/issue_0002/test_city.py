@@ -27,6 +27,7 @@ expressions = [
 ]
 
 PHRASE_1 = 'activity in La Rochelle'
+PHRASE_2 = 'science à La Rochelle'
 CITIES_FILE = path.join(
     path.dirname(__file__),
     'assets/cities_france.json',
@@ -64,15 +65,17 @@ def make_city_expressions():
             try:
                 name: Text = city['fields']['nom_de_la_commune']
                 alias: Text = city['fields']['libell_d_acheminement']
-                zip_code: Text = city['fields']['code_postal']
             except KeyError:
                 pass
             else:
-                entity = f'{zip_code}/{name}'
+                entity = f'{name}'
                 yield from expand(name, entity)
 
                 if alias != name:
                     yield from expand(alias, entity)
+
+
+CITY_EXPRESSIONS = list(make_city_expressions())
 
 
 def test_la_rochelle_simple():
@@ -98,9 +101,9 @@ def test_la_rochelle_simple():
     assert score == 1.
 
 
-def test_la_rochelle_full():
+def test_la_rochelle_full_1():
     i = IronThrone([
-        ExpressionPretender(list(make_city_expressions())),
+        ExpressionPretender(CITY_EXPRESSIONS),
     ], [
         FullMatches(),
         LargestClaim(),
@@ -110,4 +113,19 @@ def test_la_rochelle_full():
     entities, score = i.get_entities(PHRASE_1)
 
     assert score == 1.
-    assert [c.value for c in entities] == ['17000/LA ROCHELLE']
+    assert [c.value for c in entities] == ['LA ROCHELLE']
+
+
+def test_la_rochelle_full_2():
+    i = IronThrone([
+        ExpressionPretender(CITY_EXPRESSIONS),
+    ], [
+        FullMatches(),
+        LargestClaim(),
+        ClaimScores(),
+    ])
+
+    entities, score = i.get_entities(PHRASE_2)
+
+    assert [c.value for c in entities] == ['LA ROCHELLE']
+    assert score == 1.

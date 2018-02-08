@@ -40,6 +40,9 @@ class IronThroneSolver(Annealer):
         self.words = words
         self.constraints = constraints
 
+        self.penalty = 0
+        self.bounds = []
+
     def configure(self):
         """
         Guess the configuration for the annealing. Please note that this is
@@ -49,16 +52,19 @@ class IronThroneSolver(Annealer):
 
         t_mins = []
         t_maxs = []
+        self.bounds = []
 
         for constraint in self.constraints:
             t_min, t_max = constraint.energy_bounds(self.words)
             t_mins.append(t_min)
             t_maxs.append(t_max)
 
+            self.bounds.append((t_min, t_max))
+
         self.Tmin = float(sum(t_mins))
         self.Tmax = sum(t_maxs) * self.MAX_ATTENUATION
         self.updates = 0
-        self.steps = (len(self.words) ** 2) * 100
+        self.steps = 10000
 
     def move(self):
         valid_word_idx = [i for i, w in enumerate(self.words) if w.proofs]
@@ -87,11 +93,21 @@ class IronThroneSolver(Annealer):
                 yield self.words[word_idx].proofs[proof_idx]
 
     def energy(self):
+        """
+        All scores found are added up to the energy. If a constraint is outside
+        of its acceptable bounds, then the Tmin is added to the energy so it
+        won't be authorized to finish.
+        """
+
         proofs = list(self.proofs())
         score = .0
 
-        for constraint in self.constraints:
-            score += constraint.energy(proofs)
+        for (min_s, max_s), constraint in zip(self.bounds, self.constraints):
+            s = constraint.energy(proofs)
+            score += s
+
+            if s >= min_s:
+                score += self.Tmin
 
         return score
 
@@ -109,6 +125,9 @@ class IronThrone(object):
 
         for pretender in self.pretenders:
             pretender.claim(words)
+
+        for constraint in self.constraints:
+            constraint.cleanup(words)
 
         solver = IronThroneSolver(words, self.constraints)
         solver.configure()

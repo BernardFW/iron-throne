@@ -22,6 +22,12 @@ from .words import (
 
 
 class Constraint(object):
+    def cleanup(self, words: List[Word]) -> None:
+        """
+        Given a list of words, remove the proofs that we can know in advance
+        won't ever provide a good solution
+        """
+
     def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
         """
         Given those words, compute the lowest and highest bound of energy.
@@ -60,6 +66,60 @@ class FullMatches(Constraint):
     """
 
     WRONG_CLAIM_WEIGHT = 10
+
+    def follow_claim(self,
+                     claim: Claim,
+                     words: List[Word],
+                     idx: int,
+                     no_delete: Set[Proof]) -> None:
+        """
+        When a starting proof is found we follow it until it's out of order.
+        If from this starting point we can find the whole match then all the
+        valid proofs are added to the `no_delete` list of proofs that won't
+        be deleted.
+        """
+
+        to_keep: List[Proof] = []
+
+        for word in words[idx:]:
+            for proof in word.proofs:
+                if proof.claim == claim:
+                    is_first = not to_keep and proof.order == 0
+                    is_next = to_keep and to_keep[-1].order + 1 == proof.order
+
+                    if is_first or is_next:
+                        to_keep.append(proof)
+                    else:
+                        break
+
+        if not to_keep or to_keep[-1].order != claim.length - 1:
+            return
+
+        no_delete.update(to_keep)
+
+    def cleanup(self, words: List[Word]):
+        """
+        Some pretenders, in particular the expressions pretender, can generate
+        a lot of proofs which are in fact completely stupid (basically, all the
+        common words like "the" match a lot of times). This cleanup function
+        will only keep the proofs that have a chance of being selected in the
+        end, drastically reducing the complexity of finding a solution.
+        """
+
+        no_delete: Set[Proof] = set()
+        claims: Set[Claim] = set()
+
+        for i, word in enumerate(words):
+            for proof in word.proofs:
+                if proof.order == 0:
+                    self.follow_claim(proof.claim, words, i, no_delete)
+                claims.add(proof.claim)
+
+        for claim in claims:
+            claim.proofs = [p for p in claim.proofs if p in no_delete]
+
+        for word in words:
+            word.proofs = [p for p in word.proofs if p in no_delete]
 
     def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
         return 0, len(words) * self.WRONG_CLAIM_WEIGHT
