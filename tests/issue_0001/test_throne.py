@@ -9,10 +9,12 @@ from iron_throne.claim import (
     Claim,
 )
 from iron_throne.constraints import (
+    AllowedSets,
     ClaimScores,
+    EntitySet,
     FullMatches,
     LargestClaim,
-    AllowedSets, EntitySet)
+)
 from iron_throne.pretenders import (
     Expression,
     ExpressionPretender,

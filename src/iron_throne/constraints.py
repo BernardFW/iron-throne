@@ -4,10 +4,12 @@ from collections import (
 from typing import (
     Dict,
     List,
+    NamedTuple,
     Optional,
     Set,
+    Text,
     Tuple,
-    NamedTuple, Text)
+)
 
 from .claim import (
     Claim,
@@ -217,16 +219,28 @@ class AllowedSets(Constraint):
 
     def energy(self, proofs: List[Optional[Proof]]):
         allowed = set()
+        penalty = 0
+        present = self.extract_entities(proofs)
+        current_set = self.choose_set(present)
+
+        if current_set:
+            allowed = current_set.needs_one_of | current_set.also_allowed
+            penalty = current_set.penalty
+
+        return len(present - allowed) * self.EXTRA_ENTITY_WEIGHT + penalty
+
+    def score(self, proofs: List[Optional[Proof]]):
+        allowed = set()
         present = self.extract_entities(proofs)
         current_set = self.choose_set(present)
 
         if current_set:
             allowed = current_set.needs_one_of | current_set.also_allowed
 
-        return len(present - allowed) * self.EXTRA_ENTITY_WEIGHT
+        if present - allowed:
+            return .0
 
-    def score(self, proofs: List[Optional[Proof]]):
-        return 1. if self.energy(proofs) == 0. else .0
+        return 1.
 
 
 class LargestClaim(Constraint):
