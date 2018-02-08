@@ -236,3 +236,29 @@ def test_case_1():
         ),
     ]
     assert score == 1.
+
+
+def test_case_2():
+    i = IronThrone([
+        ExpressionPretender(expressions),
+    ], [
+        FullMatches(),
+        LargestClaim(),
+        ClaimScores(),
+        AllowedSets([
+            EntitySet(0, {'food'}, set()),
+        ]),
+    ])
+
+    entities, score = i.get_entities('salad turtle')
+
+    assert entities == [
+        Claim(
+            entity='food',
+            value='salad',
+            score=1.,
+            length=1,
+            seq=0,
+        ),
+    ]
+    assert score == 1.

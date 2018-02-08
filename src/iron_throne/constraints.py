@@ -170,7 +170,7 @@ class EntitySet(NamedTuple):
 
 
 class AllowedSets(Constraint):
-    EXTRA_ENTITY_WEIGHT = 10.
+    EXTRA_ENTITY_WEIGHT = 100.
 
     def __init__(self, sets: List[EntitySet]):
         """
@@ -244,7 +244,7 @@ class AllowedSets(Constraint):
 
 
 class LargestClaim(Constraint):
-    CLAIM_WEIGHT = 1.
+    CLAIM_WEIGHT = 5.
 
     def energy_bounds(self, words: List[Word]) -> Tuple[float, float]:
         return len(words) * self.CLAIM_WEIGHT, len(words) * self.CLAIM_WEIGHT
