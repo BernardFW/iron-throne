@@ -4,8 +4,13 @@ from __future__ import unicode_literals
 import os
 import codecs
 from setuptools import setup, find_packages
-from pip.req import parse_requirements
-from pip.download import PipSession
+
+try:
+    from pip.req import parse_requirements
+    from pip.download import PipSession
+except ImportError:
+    from pip._internal.req import parse_requirements
+    from pip._internal.download import PipSession
 
 rf = codecs.open(os.path.join(os.path.dirname(__file__), 'README.txt'), 'r')
 with rf as readme:
